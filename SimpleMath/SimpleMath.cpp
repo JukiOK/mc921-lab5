@@ -3,7 +3,8 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-
+#include "llvm/Analysis/ConstantFolding.h"
+#include<iterator> // for iterators
 #include <string>
 
 using namespace llvm;
@@ -28,34 +29,51 @@ struct SimpleMath : public FunctionPass {
   }
 
   bool runOnFunction(Function &F) {
+
     for (BasicBlock &BB : F) {
-      for (Instruction &I : BB) {
+      // BasicBlock::iterator bi = BB.begin();
+      int n = 0;
+      for (BasicBlock::iterator is = BB.begin(), ie = BB.end(); is != ie; ++is){
+        Instruction& I  = *is;
+        Instruction* LI = &I;
+        for(auto user: I.users()){
+          if(isa<Instruction>(*user)){
+            // errs() << "I" << n << ":" << *user << "\n";
+            // errs() << n2++ << "\n";
+            LI = cast<Instruction>(user);
+          }
+        }
+        // BasicBlock::iterator(LI)
+        int instIndex = 0;
+        int count = 0;
+        for (BasicBlock::iterator is = BB.begin(), ie = BB.end(); is != ie; ++is){
+          Instruction& I  = *is;
+          if(&I == LI){
+            instIndex = count;
+            break;
+          }
+          count++;
+        }
+        errs() << "I" << n << ": " << I << " | I" << instIndex << ": " << *LI << "\n";
+        n++;
+      }
+    }
+
+    for (BasicBlock &BB : F) {
+      // BasicBlock::iterator bi = BB.begin();
+      for (BasicBlock::iterator is = BB.begin(), ie = BB.end(); is != ie; ++is){
         Value *left;
         Value *right;
-        switch (I.getOpcode()) {
-          case Instruction::Add:
-          case Instruction::Sub:
-          case Instruction::Mul:
-          case Instruction::SDiv:
-            left = I.getOperand(0);
-            right = I.getOperand(1);
-            errs() << "Instruction: " << I << "\n";
-            errs() << "    Left operand: ";
-            printOperand(left);
-            errs() << "    Right operand: ";
-            printOperand(right);
-            if(isa<ConstantInt>(*left) && isa<ConstantInt>(*right)){
-              ConstantInt *l = cast<ConstantInt>(left);
-              ConstantInt *r = cast<ConstantInt>(right);
-              int res = l->getSExtValue() / r->getSExtValue();
-              errs() << res << "\n";
-              ReplaceInstWithValue(BB.getInstList(), I, res);
-              errs() << "left " << left ;
-            }
-            break;
-          default:
-            errs() << "Instruction isn't arithmetic\n";
-            break;
+        Instruction& I  = *is;
+        if(I.getOpcode() == Instruction::SDiv || I.getOpcode() == Instruction::Add || I.getOpcode() == Instruction::Mul || I.getOpcode() == Instruction::Sub){
+          left = I.getOperand(0);
+          right = I.getOperand(1);
+          if(isa<ConstantInt>(*left) && isa<ConstantInt>(*right)){
+            Constant *valor = ConstantFoldInstruction(&I, I.getModule()->getDataLayout());
+            ReplaceInstWithValue(BB.getInstList(), is, valor);
+
+          }
+
         }
       }
     }
